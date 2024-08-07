@@ -1,0 +1,247 @@
+---
+title: "project"
+author: "Kranthi"
+date: "2023-05-04"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+```{r}
+getwd()
+df <- read.csv("C:/Users/Kranthi/Desktop/brain_stroke.csv",header = TRUE)
+print(df)
+
+```
+```{r}
+str(df)
+```
+```{r}
+summary(df)
+```
+
+```{r}
+# Null values 
+colSums(is.na(df)) 
+```
+```{r}
+# To describe the structure of the dataframe
+sapply(df,function(x) length(unique(x)))
+```
+```{r}
+# To check the column names in the dataframe
+
+colnames(df)
+```
+```{r}
+# To return the number of unique values from each column.
+
+df_cat <- df[, c("gender", "hypertension", "heart_disease", "ever_married", "work_type", "Residence_type", "smoking_status", "stroke")]
+
+for (i in colnames(df_cat)) {
+  print(unique(df_cat[[i]]))
+}
+
+
+for (i in colnames(df_cat)) {
+  print(table(df_cat[[i]]))
+}
+
+# histogram
+hist(df[df$stroke == 0, "age"], col = "green", main = "Histogram of Age by Stroke Status", xlab = "Age", ylab = "Frequency")
+hist(df[df$stroke == 1, "age"], col = "red", add = TRUE)
+legend("topright", c("No Stroke", "Stroke"), fill = c("blue", "red"))
+
+```
+
+
+```{r}
+install.packages("gtable")
+install.packages("ggplot")
+require(ggplot)
+for (i in names(df_cat)) {
+  plot_data <- data.frame(table(df_cat[, i]))
+  plot_data$percentage <- plot_data$Freq / sum(plot_data$Freq)
+  plot <- ggplot(plot_data, aes(x = "", y = percentage, fill = Var1)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar("y", start = 0) +
+    ggtitle(i) +
+    theme_void()
+  print(plot)
+}
+
+```
+```{r}
+corx <- cor(df[, sapply(df, is.numeric)])
+
+library(corrplot)
+
+cor_With_stroke <- corx[,"stroke"]
+cor_With_stroke <- cor_With_stroke[-length(cor_With_stroke)]
+
+sorted_cor <- sort(cor_With_stroke,decreasing = TRUE)
+corrplot(corx,method = "color",type = "upper")
+print(sorted_cor)
+
+library(tidyverse)
+attach(df)
+```
+
+
+```{r}
+# Fit a logistic regression model
+model <- glm(stroke ~ gender + age + hypertension + heart_disease + ever_married + work_type + Residence_type + avg_glucose_level + bmi + smoking_status, data = df, family = "binomial")
+
+```
+
+```{r}
+# Print the summary of the model
+summary(model)
+
+pvalues <- summary(model)$coefficients[,4]
+significance_level <- 0.05
+significant_vars <- names(pvalues[pvalues < significance_level & !is.na(pvalues)])
+significant_vars
+
+```
+```{r}
+# How many people in the data had a stroke before? 
+
+library(ggplot2)
+
+ggplot(df, aes(x = factor(df$stroke))) + 
+  geom_bar() + 
+  xlab("Stroke") +
+  ylab("Count") +
+  ggtitle("Stroke Count")
+
+sum(df$stroke ==0)
+sum(df$stroke ==1)
+
+```
+```{r}
+# What is the link between age and stroke risk? Is there an increase in the
+# risk of stroke with age, and if so, at what rate?
+
+# Fit logistic regression model
+model <- glm(stroke ~ age, data = df, family = binomial)
+
+# Print model summary
+summary(model)
+
+```
+```{r}
+# Estimate stroke risk at different ages
+newdata <- data.frame(age = seq(20, 100, by = 10))
+pred <- predict(model, newdata, type = "response")
+# Plot predicted stroke risk vs. age
+plot(newdata$age, pred, type = "l", xlab = "Age", ylab = "Predicted Stroke Risk")
+
+```
+```{r}
+# take the exp(est.std(age)) from summary and subtract 1 
+# from it to get the percentage increase of having stroke 
+#with one-unit increase in age. 
+
+#Is there any difference in stroke risk between men and women? 
+
+# Create a 2x2 contingency table of stroke and gender
+cont_table <- table(df$stroke, df$gender)
+
+# Perform chi-square test
+chisq_result <- chisq.test(cont_table)
+
+# Print the test results
+print(chisq_result)
+ggplot(df, aes(x = factor(gender), fill = factor(stroke))) +
+  geom_bar(position = "dodge") +
+  scale_fill_discrete(name = "Stroke") +
+  labs(title = "Stroke Incidence by Gender",
+       x = "Gender",
+       y = "Count") +
+  theme_minimal()
+
+
+```
+```{r}
+#Are married individuals more likely to suffer from stroke 
+#than unmarried individuals?
+
+# Create a contingency table of stroke and marital status
+table <- table(df$stroke, df$ever_married)
+
+# Run chi-square test
+chisq.test(table)
+
+```
+```{r}
+# Does smoking status have an impact on the risk of stroke?
+# create a contingency table of stroke incidence by smoking status
+smoking_table <- table(df$smoking_status, df$stroke)
+
+# perform chi-squared test
+result <- chisq.test(smoking_table)
+
+# print the result
+print(result)
+
+```
+```{r}
+library(caret)
+library(pROC)
+# Convert categorical variables to factor type
+df$gender <- as.factor(df$gender)
+df$hypertension <- as.factor(df$hypertension)
+df$heart_disease <- as.factor(df$heart_disease)
+df$ever_married <- as.factor(df$ever_married)
+df$work_type <- as.factor(df$work_type)
+df$Residence_type <- as.factor(df$Residence_type)
+df$smoking_status <- as.factor(df$smoking_status)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Split the data into training and testing sets
+train_index <- createDataPartition(df$stroke, times = 1, p = 0.7, list = FALSE)
+train_data <- df[train_index, ]
+test_data <- df[-train_index, ]
+
+# Fit the logistic regression model on the training data
+model <- glm(stroke ~ gender + age + hypertension + heart_disease + ever_married + work_type + Residence_type + avg_glucose_level + bmi + smoking_status, data = train_data, family = "binomial")
+
+# Make predictions on the testing data
+pred <- predict(model, newdata = test_data, type = "response")
+
+# Convert predicted probabilities to binary outcomes
+pred_binary <- ifelse(pred > 0.5, 1, 0)
+
+# Calculate accuracy, precision, and F1 score
+accuracy <- mean(pred_binary == test_data$stroke)
+precision <- sum(pred_binary[test_data$stroke == 1] == 1) / sum(pred_binary == 1)
+recall <- sum(pred_binary[test_data$stroke == 1] == 1) / sum(test_data$stroke == 1)
+f1_score <- 2 * precision * recall / (precision + recall)
+
+# Calculate AUC-ROC
+roc_obj <- roc(test_data$stroke, pred)
+auc_roc <- auc(roc_obj)
+
+# Plot the AUC-ROC curve
+plot(roc_obj, main = "AUC-ROC Curve")
+
+# Print the results
+cat("Accuracy:", round(accuracy, 2), "\n")
+cat("Precision:", round(precision, 2), "\n")
+cat("Recall:", round(recall, 2), "\n")
+cat("F1 Score:", round(f1_score, 2), "\n")
+cat("AUC-ROC:", round(auc_roc, 2), "\n")
+
+```
+
+```{r}
+boxplot(df, cex = 0.0)
+
+```
